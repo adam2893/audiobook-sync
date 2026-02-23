@@ -471,9 +471,8 @@ def create_sync_engine_from_config() -> Optional[SyncEngine]:
     """
     from app.db.database import get_db_session
     
-    # Get database session for ConfigManager
-    db_session = get_db_session()
-    try:
+    # Get database session for ConfigManager using context manager
+    with get_db_session() as db_session:
         config_manager = ConfigManager(db_session=db_session)
         config = config_manager.get_config()
         
@@ -486,5 +485,3 @@ def create_sync_engine_from_config() -> Optional[SyncEngine]:
             return engine
         
         return None
-    finally:
-        db_session.close()
