@@ -1,8 +1,11 @@
 FROM python:3.11-slim
 
+# Build arguments
+ARG VERSION=1.0.0
+
 LABEL maintainer="Audiobook Sync Contributors"
 LABEL description="Sync audiobook progress from Audiobookshelf to StoryGraph and Hardcover"
-LABEL version="0.1.0"
+LABEL version="${VERSION}"
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
