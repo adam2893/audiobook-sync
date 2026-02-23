@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration - Audiobook Sync{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-gear"></i> Configuration</h1>
+        <p class="text-muted">Configure your Audiobookshelf, StoryGraph, and Hardcover connections.</p>
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('config.index') }}">
+    <!-- Audiobookshelf Settings -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="bi bi-server"></i> Audiobookshelf Settings
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="abs_url" class="form-label">Server URL</label>
+                    <input type="url" 
+                           class="form-control" 
+                           id="abs_url" 
+                           name="abs_url" 
+                           value="{{ config.abs_url or '' }}"
+                           placeholder="http://localhost:13378">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="abs_token" class="form-label">API Token</label>
+                    <div class="input-group">
+                        <input type="password" 
+                               class="form-control" 
+                               id="abs_token" 
+                               name="abs_token" 
+                               value="{{ config.abs_token or '' }}"
+                               placeholder="Your API token">
+                        <button class="btn btn-outline-secondary" 
+                                type="button" 
+                                onclick="testConnection('audiobookshelf')">
+                            Test
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- StoryGraph Settings -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="bi bi-graph-up"></i> StoryGraph Settings
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="storygraph_email" class="form-label">Email</label>
+                    <input type="email" 
+                           class="form-control" 
+                           id="storygraph_email" 
+                           name="storygraph_email" 
+                           value="{{ config.storygraph_email or '' }}"
+                           placeholder="your@email.com">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="storygraph_password" class="form-label">Password</label>
+                    <div class="input-group">
+                        <input type="password" 
+                               class="form-control" 
+                               id="storygraph_password" 
+                               name="storygraph_password" 
+                               value="{{ config.storygraph_password or '' }}"
+                               placeholder="Your password">
+                        <button class="btn btn-outline-secondary" 
+                                type="button" 
+                                onclick="testConnection('storygraph')">
+                            Test
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" 
+                       type="checkbox" 
+                       id="enable_storygraph" 
+                       name="enable_storygraph"
+                       {% if config.enable_storygraph %}checked{% endif %}>
+                <label class="form-check-label" for="enable_storygraph">
+                    Enable StoryGraph sync
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hardcover Settings -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="bi bi-book"></i> Hardcover Settings
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="hardcover_api_key" class="form-label">API Key</label>
+                    <div class="input-group">
+                        <input type="password" 
+                               class="form-control" 
+                               id="hardcover_api_key" 
+                               name="hardcover_api_key" 
+                               value="{{ config.hardcover_api_key or '' }}"
+                               placeholder="Your API key">
+                        <button class="btn btn-outline-secondary" 
+                                type="button" 
+                                onclick="testConnection('hardcover')">
+                            Test
+                        </button>
+                    </div>
+                    <small class="text-muted">
+                        Get your API key from <a href="https://hardcover.app/account" target="_blank">hardcover.app/account</a>
+                    </small>
+                </div>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" 
+                       type="checkbox" 
+                       id="enable_hardcover" 
+                       name="enable_hardcover"
+                       {% if config.enable_hardcover %}checked{% endif %}>
+                <label class="form-check-label" for="enable_hardcover">
+                    Enable Hardcover sync
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sync Settings -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="bi bi-arrow-repeat"></i> Sync Settings
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label for="sync_interval_minutes" class="form-label">Sync Interval (minutes)</label>
+                    <input type="number" 
+                           class="form-control" 
+                           id="sync_interval_minutes" 
+                           name="sync_interval_minutes" 
+                           value="{{ config.sync_interval_minutes }}"
+                           min="5" 
+                           max="1440">
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="min_listen_minutes" class="form-label">Min Listen Time (minutes)</label>
+                    <input type="number" 
+                           class="form-control" 
+                           id="min_listen_minutes" 
+                           name="min_listen_minutes" 
+                           value="{{ config.min_listen_minutes }}"
+                           min="1" 
+                           max="60">
+                    <small class="text-muted">
+                        Only sync books listened to for at least this long
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-end">
+        <button type="submit" class="btn btn-primary btn-lg">
+            <i class="bi bi-check-lg"></i> Save Configuration
+        </button>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function testConnection(service) {
+    let data = {};
+    let url = '/config/test';
+    
+    if (service === 'audiobookshelf') {
+        data = {
+            service: 'audiobookshelf',
+            url: document.getElementById('abs_url').value,
+            token: document.getElementById('abs_token').value
+        };
+    } else if (service === 'storygraph') {
+        data = {
+            service: 'storygraph',
+            email: document.getElementById('storygraph_email').value,
+            password: document.getElementById('storygraph_password').value
+        };
+    } else if (service === 'hardcover') {
+        data = {
+            service: 'hardcover',
+            api_key: document.getElementById('hardcover_api_key').value
+        };
+    }
+    
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(data)
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(service.charAt(0).toUpperCase() + service.slice(1) + ': Connection successful!');
+        } else {
+            alert(service.charAt(0).toUpperCase() + service.slice(1) + ': Connection failed - ' + (result.error || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Test failed: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

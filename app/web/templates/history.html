@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}History - Audiobook Sync{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="bi bi-clock-history"></i> Sync History</h1>
+    </div>
+</div>
+
+<!-- Sync Runs -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="bi bi-list-check"></i> Sync Runs
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Run ID</th>
+                        <th>Started</th>
+                        <th>Duration</th>
+                        <th>Status</th>
+                        <th>Processed</th>
+                        <th>Synced</th>
+                        <th>Failed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for run in sync_runs %}
+                    <tr>
+                        <td><code>{{ run.run_id }}</code></td>
+                        <td>{{ run.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        <td>
+                            {% if run.completed_at %}
+                                {{ (run.completed_at - run.started_at).seconds }}s
+                            {% else %}
+                                --
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if run.status == 'completed' %}
+                                <span class="badge bg-success">Completed</span>
+                            {% elif run.status == 'running' %}
+                                <span class="badge bg-primary">Running</span>
+                            {% else %}
+                                <span class="badge bg-danger">Failed</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ run.books_processed }}</td>
+                        <td class="text-success">{{ run.books_synced }}</td>
+                        <td class="text-danger">{{ run.books_failed }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">
+                            No sync runs yet
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Book Sync History -->
+<div class="card">
+    <div class="card-header">
+        <i class="bi bi-book"></i> Book Sync History
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Book</th>
+                        <th>Progress</th>
+                        <th>StoryGraph</th>
+                        <th>Hardcover</th>
+                        <th>Synced At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in history %}
+                    <tr>
+                        <td>
+                            <strong>{{ item.book_title }}</strong>
+                            {% if item.book_author %}
+                            <br><small class="text-muted">{{ item.book_author }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 20px; width: 100px;">
+                                <div class="progress-bar" 
+                                     role="progressbar" 
+                                     style="width: {{ item.progress_percent }}%">
+                                    {{ "%.0f"|format(item.progress_percent) }}%
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            {% if item.sg_status == 'success' %}
+                                <span class="badge bg-success">
+                                    <i class="bi bi-check"></i> Synced
+                                </span>
+                            {% elif item.sg_status == 'failed' %}
+                                <span class="badge bg-danger" title="{{ item.sg_error }}">
+                                    <i class="bi bi-x"></i> Failed
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary">Skipped</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.hc_status == 'success' %}
+                                <span class="badge bg-success">
+                                    <i class="bi bi-check"></i> Synced
+                                </span>
+                            {% elif item.hc_status == 'failed' %}
+                                <span class="badge bg-danger" title="{{ item.hc_error }}">
+                                    <i class="bi bi-x"></i> Failed
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary">Skipped</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ item.synced_at.strftime('%Y-%m-%d %H:%M') }}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">
+                            No sync history yet
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

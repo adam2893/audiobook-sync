@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Audiobook Sync{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-6">
+        <h1><i class="bi bi-speedometer2"></i> Dashboard</h1>
+    </div>
+    <div class="col-md-6 text-end">
+        <button id="syncBtn" class="btn btn-primary">
+            <i class="bi bi-arrow-repeat"></i> Sync Now
+        </button>
+    </div>
+</div>
+
+<!-- Status Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="card-title text-muted">Status</h6>
+                <h3 class="text-success">
+                    <i class="bi bi-check-circle-fill"></i> Running
+                </h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="card-title text-muted">Last Sync</h6>
+                <h5 id="lastSync">
+                    {% if latest_run %}
+                        {{ latest_run.started_at.strftime('%H:%M:%S') }}
+                    {% else %}
+                        Never
+                    {% endif %}
+                </h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="card-title text-muted">Next Sync</h6>
+                <h5 id="nextSync">
+                    {% if next_sync %}
+                        {{ next_sync.strftime('%H:%M:%S') }}
+                    {% else %}
+                        --
+                    {% endif %}
+                </h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="card-title text-muted">Synced (24h)</h6>
+                <h3 class="text-primary">{{ stats.synced }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Statistics -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-bar-chart"></i> Recent Sync Activity
+            </div>
+            <div class="card-body">
+                {% if recent_syncs %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Book</th>
+                                <th>Progress</th>
+                                <th>StoryGraph</th>
+                                <th>Hardcover</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sync in recent_syncs %}
+                            <tr>
+                                <td>
+                                    <strong>{{ sync.book_title }}</strong>
+                                    {% if sync.book_author %}
+                                    <br><small class="text-muted">{{ sync.book_author }}</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="progress" style="height: 20px;">
+                                        <div class="progress-bar progress-bar-custom" 
+                                             role="progressbar" 
+                                             style="width: {{ sync.progress_percent }}%">
+                                            {{ "%.0f"|format(sync.progress_percent) }}%
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if sync.sg_status == 'success' %}
+                                        <span class="badge bg-success status-badge">
+                                            <i class="bi bi-check"></i> Synced
+                                        </span>
+                                    {% elif sync.sg_status == 'failed' %}
+                                        <span class="badge bg-danger status-badge" 
+                                              title="{{ sync.sg_error }}">
+                                            <i class="bi bi-x"></i> Failed
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-secondary status-badge">
+                                            <i class="bi bi-dash"></i> Skipped
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if sync.hc_status == 'success' %}
+                                        <span class="badge bg-success status-badge">
+                                            <i class="bi bi-check"></i> Synced
+                                        </span>
+                                    {% elif sync.hc_status == 'failed' %}
+                                        <span class="badge bg-danger status-badge"
+                                              title="{{ sync.hc_error }}">
+                                            <i class="bi bi-x"></i> Failed
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-secondary status-badge">
+                                            <i class="bi bi-dash"></i> Skipped
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <small>{{ sync.synced_at.strftime('%H:%M') }}</small>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center py-4">
+                    No sync activity yet. Configure your services and run a sync.
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <!-- Errors -->
+        <div class="card mb-3">
+            <div class="card-header bg-danger text-white">
+                <i class="bi bi-exclamation-triangle"></i> Recent Errors
+            </div>
+            <div class="card-body">
+                {% if errors %}
+                <ul class="list-unstyled mb-0">
+                    {% for error in errors %}
+                    <li class="mb-2">
+                        <strong>{{ error.book_title }}</strong>
+                        <br>
+                        <small class="text-danger">
+                            {% if error.sg_error %}SG: {{ error.sg_error }}{% endif %}
+                            {% if error.hc_error %}HC: {{ error.hc_error }}{% endif %}
+                        </small>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-success mb-0">
+                    <i class="bi bi-check-circle"></i> No errors in the last 24 hours
+                </p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Quick Stats -->
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-graph-up"></i> Statistics (24h)
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Synced</span>
+                    <strong class="text-success">{{ stats.synced }}</strong>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Failed</span>
+                    <strong class="text-danger">{{ stats.failed }}</strong>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span>Skipped</span>
+                    <strong class="text-muted">{{ stats.skipped }}</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('syncBtn').addEventListener('click', async function() {
+    const btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing...';
+    
+    try {
+        const response = await fetch('/api/sync', { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Sync failed: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Sync failed: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Sync Now';
+    }
+});
+</script>
+{% endblock %}

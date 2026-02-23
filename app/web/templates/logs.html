@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Logs - Audiobook Sync{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-6">
+        <h1><i class="bi bi-terminal"></i> Logs</h1>
+    </div>
+    <div class="col-md-6 text-end">
+        <div class="btn-group">
+            <button class="btn btn-outline-secondary" onclick="filterLogs('all')">All</button>
+            <button class="btn btn-outline-warning" onclick="filterLogs('WARNING')">Warnings</button>
+            <button class="btn btn-outline-danger" onclick="filterLogs('ERROR')">Errors</button>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th style="width: 100px;">Time</th>
+                        <th style="width: 80px;">Level</th>
+                        <th>Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr class="log-row" data-level="{{ log.level }}">
+                        <td>
+                            <small class="text-muted">
+                                {{ log.created_at.strftime('%H:%M:%S') }}
+                            </small>
+                        </td>
+                        <td>
+                            <span class="badge 
+                                {% if log.level == 'ERROR' %}bg-danger
+                                {% elif log.level == 'WARNING' %}bg-warning
+                                {% elif log.level == 'INFO' %}bg-info
+                                {% else %}bg-secondary{% endif %}">
+                                {{ log.level }}
+                            </span>
+                        </td>
+                        <td class="log-entry log-{{ log.level.lower() }}">
+                            {{ log.message }}
+                            {% if log.details %}
+                            <small class="text-muted d-block">{{ log.details }}</small>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3" class="text-center text-muted py-4">
+                            No logs available
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function filterLogs(level) {
+    const rows = document.querySelectorAll('.log-row');
+    rows.forEach(row => {
+        if (level === 'all' || row.dataset.level === level) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+</script>
+{% endblock %}
