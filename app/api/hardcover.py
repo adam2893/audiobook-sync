@@ -326,9 +326,10 @@ class HardcoverClient:
         
         try:
             result = self.client.execute(query)
-            me = result.get("me", [])
+            me = result.get("me")
             
-            if not me:
+            # Handle None or empty response
+            if not me or not isinstance(me, list) or len(me) == 0:
                 return []
             
             user_books = me[0].get("user_books", [])

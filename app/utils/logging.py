@@ -11,8 +11,9 @@ from typing import Optional, Any, Dict
 import structlog
 from structlog.types import Processor
 
-from app.db.models import SyncLog
-from app.db.database import get_db_session
+# Lazy imports to avoid circular dependency
+# from app.db.models import SyncLog
+# from app.db.database import get_db_session
 
 
 def get_log_level() -> str:
@@ -68,15 +69,30 @@ class DatabaseLogHandler(logging.Handler):
     """
     Custom log handler that writes logs to the database.
     Used for displaying logs in the web UI.
+    
+    Uses lazy imports to avoid circular dependency with database module.
     """
     
     def __init__(self, max_logs: int = 1000):
         super().__init__()
         self.max_logs = max_logs
+        self._db_available = False
+    
+    def set_db_available(self, available: bool) -> None:
+        """Mark database as available after initialization."""
+        self._db_available = available
     
     def emit(self, record: logging.LogRecord) -> None:
         """Write log record to database."""
+        # Skip if database not initialized yet
+        if not self._db_available:
+            return
+            
         try:
+            # Lazy imports to avoid circular dependency
+            from app.db.database import get_db_session
+            from app.db.models import SyncLog
+            
             with get_db_session() as session:
                 # Create log entry
                 log_entry = SyncLog(
@@ -151,7 +167,21 @@ class SyncLogger:
 # Initialize logging on module import
 setup_logging()
 
-# Add database handler
-db_handler = DatabaseLogHandler()
-db_handler.setLevel(logging.INFO)
-logging.getLogger().addHandler(db_handler)
+# Create database handler (but don't enable until DB is initialized)
+_db_handler: Optional[DatabaseLogHandler] = None
+
+
+def init_db_logging() -> None:
+    """
+    Initialize database logging after database is initialized.
+    Should be called after init_db() in main.py.
+    """
+    global _db_handler
+    
+    if _db_handler is None:
+        _db_handler = DatabaseLogHandler()
+        _db_handler.setLevel(logging.INFO)
+        _db_handler.set_db_available(True)
+        logging.getLogger().addHandler(_db_handler)
+    else:
+        _db_handler.set_db_available(True)

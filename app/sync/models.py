@@ -2,8 +2,8 @@
 Data models for sync operations.
 """
 
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, List
 from datetime import datetime
 
 
@@ -68,8 +68,4 @@ class SyncRunResult:
     error_message: Optional[str] = None
     
     # Individual results
-    results: list = None
-    
-    def __post_init__(self):
-        if self.results is None:
-            self.results = []
+    results: List[SyncResult] = field(default_factory=list)

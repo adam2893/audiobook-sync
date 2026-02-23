@@ -146,6 +146,16 @@ class SyncEngine:
                     error_message="Failed to initialize sync engine",
                 )
         
+        # Check if Audiobookshelf client is available
+        if not self.abs_client:
+            return SyncRunResult(
+                run_id=run_id or str(uuid.uuid4())[:8],
+                started_at=datetime.utcnow(),
+                completed_at=datetime.utcnow(),
+                success=False,
+                error_message="Audiobookshelf is not configured. Please set ABS_URL and ABS_TOKEN.",
+            )
+        
         run_id = run_id or str(uuid.uuid4())[:8]
         sync_logger = SyncLogger(run_id)
         
@@ -459,15 +469,22 @@ def create_sync_engine_from_config() -> Optional[SyncEngine]:
     Returns:
         SyncEngine if configured, None otherwise
     """
-    config_manager = ConfigManager()
-    config = config_manager.get_config()
+    from app.db.database import get_db_session
     
-    if not config_manager.is_configured():
-        logger.warning("Sync engine not configured")
+    # Get database session for ConfigManager
+    db_session = get_db_session()
+    try:
+        config_manager = ConfigManager(db_session=db_session)
+        config = config_manager.get_config()
+        
+        if not config_manager.is_configured():
+            logger.warning("Sync engine not configured")
+            return None
+        
+        engine = SyncEngine(config)
+        if engine.initialize():
+            return engine
+        
         return None
-    
-    engine = SyncEngine(config)
-    if engine.initialize():
-        return engine
-    
-    return None
+    finally:
+        db_session.close()

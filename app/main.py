@@ -15,7 +15,7 @@ from flask import Flask, redirect, url_for
 from app.config import ConfigManager, get_config_from_env
 from app.db.database import init_db, close_db
 from app.sync.engine import SyncEngine, create_sync_engine_from_config
-from app.utils.logging import get_logger, setup_logging
+from app.utils.logging import get_logger, setup_logging, init_db_logging
 
 logger = get_logger(__name__)
 
@@ -133,6 +133,9 @@ def main():
     
     # Initialize database
     init_db()
+    
+    # Initialize database logging (must be after init_db)
+    init_db_logging()
     
     # Load configuration
     config = get_config_from_env()
