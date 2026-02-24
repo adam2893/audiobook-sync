@@ -2,7 +2,7 @@
 StoryGraph API client for Audiobook Sync Service.
 
 StoryGraph does not have an official API, so this client uses
-web scraping based on the reverse-engineered API from:
+web scraping with Selenium based on the approach from:
 https://github.com/ym496/storygraph-api
 
 Note: This implementation may break if StoryGraph changes their site.
@@ -12,10 +12,17 @@ from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 import re
 import time
-from urllib.parse import urljoin
+import os
 
-import requests
 from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, WebDriverException
+from webdriver_manager.chrome import ChromeDriverManager
 
 from app.api.base import APIError
 from app.utils.logging import get_logger
@@ -39,129 +46,136 @@ class StoryGraphBook:
 
 class StoryGraphClient:
     """
-    Client for StoryGraph (unofficial API via web scraping).
+    Client for StoryGraph (unofficial API via web scraping with Selenium).
     
-    Provides methods to authenticate, search for books, and update progress.
-    Uses session-based authentication.
+    Provides methods to authenticate using cookie, search for books, and update progress.
+    Uses cookie-based authentication - users must extract the remember_user_token cookie
+    from their browser after logging in.
     """
     
-    def __init__(self, email: str, password: str):
+    def __init__(self, cookie: str, username: Optional[str] = None):
         """
         Initialize StoryGraph client.
         
         Args:
-            email: StoryGraph email
-            password: StoryGraph password
+            cookie: The remember_user_token cookie value from browser
+            username: StoryGraph username (optional, used for user-specific pages)
         """
-        self.email = email
-        self.password = password
-        self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        })
+        self.cookie = cookie
+        self.username = username
         self._authenticated = False
-        self._csrf_token = None
+        self._driver = None
     
-    def _get_csrf_token(self, html: str) -> Optional[str]:
-        """Extract CSRF token from HTML."""
-        # Look for csrf-token in meta tag
-        match = re.search(r'<meta name="csrf-token" content="([^"]+)"', html)
-        if match:
-            return match.group(1)
+    def _get_driver(self) -> webdriver.Chrome:
+        """
+        Get or create a Selenium WebDriver instance.
         
-        # Look for authenticity_token in form
-        match = re.search(r'name="authenticity_token" value="([^"]+)"', html)
-        if match:
-            return match.group(1)
+        Returns:
+            Chrome WebDriver instance
+        """
+        if self._driver is None:
+            options = Options()
+            options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--window-size=1920,1080")
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option('useAutomationExtension', False)
+            
+            # Set binary location for Chromium in Docker
+            chromium_path = os.environ.get('CHROMIUM_BIN', '/usr/bin/chromium')
+            if os.path.exists(chromium_path):
+                options.binary_location = chromium_path
+            
+            try:
+                # Try to use ChromeDriverManager first (for local development)
+                service = Service(ChromeDriverManager().install())
+                self._driver = webdriver.Chrome(service=service, options=options)
+            except Exception as e:
+                logger.debug("ChromeDriverManager failed, trying system chromedriver", error=str(e))
+                # Fall back to system chromedriver (for Docker)
+                self._driver = webdriver.Chrome(options=options)
+            
+            # Set page load timeout
+            self._driver.set_page_load_timeout(30)
         
-        return None
+        return self._driver
     
-    def _update_csrf_from_response(self, response: requests.Response) -> None:
-        """Update CSRF token from response."""
-        self._csrf_token = self._get_csrf_token(response.text)
-        if self._csrf_token:
-            self.session.headers.update({
-                "X-CSRF-Token": self._csrf_token
-            })
+    def _close_driver(self) -> None:
+        """Close the Selenium WebDriver if it exists."""
+        if self._driver:
+            try:
+                self._driver.quit()
+            except Exception as e:
+                logger.debug("Error closing driver", error=str(e))
+            finally:
+                self._driver = None
+    
+    def _add_cookie(self) -> None:
+        """Add the authentication cookie to the current session."""
+        driver = self._get_driver()
+        # Navigate to the base URL first to set the cookie
+        driver.get(STORYGRAPH_BASE_URL)
+        time.sleep(1)  # Wait for page to load
+        
+        driver.add_cookie({
+            'name': 'remember_user_token',
+            'value': self.cookie,
+            'domain': 'app.thestorygraph.com',
+            'path': '/',
+        })
+    
+    def _scroll_page(self) -> None:
+        """Scroll the page to load all content (for infinite scroll pages)."""
+        driver = self._get_driver()
+        last_height = driver.execute_script("return document.body.scrollHeight")
+        
+        while True:
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(2)
+            new_height = driver.execute_script("return document.body.scrollHeight")
+            if new_height == last_height:
+                break
+            last_height = new_height
     
     def login(self) -> bool:
         """
-        Authenticate with StoryGraph.
+        Authenticate with StoryGraph using the cookie.
         
         Returns:
-            True if login successful, False otherwise
+            True if authentication successful, False otherwise
         """
         try:
-            # StoryGraph uses a React/Vue SPA, so the login form is rendered via JavaScript
-            # We need to use the API endpoint directly
+            driver = self._get_driver()
+            self._add_cookie()
             
-            # First, get the login page to get any cookies/CSRF tokens
-            login_url = f"{STORYGRAPH_BASE_URL}/sign_in"
-            login_page = self.session.get(login_url)
+            # Refresh to apply cookie
+            driver.refresh()
+            time.sleep(2)
             
-            logger.debug("Login page fetched", status_code=login_page.status_code, url=login_page.url)
+            # Check if we're logged in by looking for user-specific elements
+            # Navigate to currently-reading page which requires authentication
+            if self.username:
+                driver.get(f"{STORYGRAPH_BASE_URL}/currently-reading/{self.username}")
+            else:
+                driver.get(f"{STORYGRAPH_BASE_URL}/currently-reading")
             
-            # Extract CSRF token from the page (it's usually in a meta tag or embedded in JS)
-            self._update_csrf_from_response(login_page)
+            time.sleep(2)
             
-            # Try the API login endpoint directly
-            # StoryGraph uses Rails backend with Devise for authentication
-            login_data = {
-                "user[email]": self.email,
-                "user[password]": self.password,
-                "authenticity_token": self._csrf_token,
-            }
+            # Check if we're on a valid page (not redirected to login)
+            current_url = driver.current_url
+            if "sign_in" in current_url:
+                logger.error("StoryGraph cookie authentication failed - redirected to login")
+                return False
             
-            # Try the session endpoint
-            response = self.session.post(
-                f"{STORYGRAPH_BASE_URL}/users/sign_in",
-                data=login_data,
-                allow_redirects=True,
-                headers={
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                }
-            )
+            self._authenticated = True
+            logger.info("Successfully authenticated with StoryGraph using cookie")
+            return True
             
-            logger.debug("Login response", status_code=response.status_code, url=response.url)
-            
-            # Check if login successful (redirected away from sign_in page)
-            if response.status_code == 200 and "sign_in" not in response.url:
-                self._authenticated = True
-                self._update_csrf_from_response(response)
-                logger.info("Successfully logged into StoryGraph")
-                return True
-            
-            # Try alternative JSON API endpoint
-            json_response = self.session.post(
-                f"{STORYGRAPH_BASE_URL}/api/v1/users/sign_in",
-                json={
-                    "user": {
-                        "email": self.email,
-                        "password": self.password,
-                    }
-                },
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                }
-            )
-            
-            if json_response.status_code == 200:
-                self._authenticated = True
-                logger.info("Successfully logged into StoryGraph via API")
-                return True
-            
-            logger.error(
-                "StoryGraph login failed",
-                status_code=response.status_code,
-                url=response.url,
-                json_status=json_response.status_code
-            )
-            return False
-            
-        except Exception as e:
-            logger.error("StoryGraph login error", error=str(e))
+        except WebDriverException as e:
+            logger.error("StoryGraph authentication error", error=str(e))
             return False
     
     def test_connection(self) -> bool:
@@ -186,33 +200,31 @@ class StoryGraphClient:
             StoryGraphBook if found, None otherwise
         """
         try:
+            driver = self._get_driver()
+            self._add_cookie()
+            
             # Search for book
-            search_url = f"{STORYGRAPH_BASE_URL}/books"
-            params = {"q": isbn}
+            search_url = f"{STORYGRAPH_BASE_URL}/browse?search_term={isbn}"
+            driver.get(search_url)
+            time.sleep(2)
             
-            response = self.session.get(search_url, params=params)
-            
-            if response.status_code != 200:
-                return None
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
+            # Parse results
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
             
             # Find first book result
-            book_link = soup.find('a', href=re.compile(r'/books/\d+'))
+            book_link = soup.find('a', href=re.compile(r'/books/[a-f0-9-]+'))
             
             if not book_link:
                 return None
             
             # Extract book ID from URL
             href = book_link.get('href', '')
-            match = re.search(r'/books/(\d+)', href)
+            match = re.search(r'/books/([a-f0-9-]+)', href)
             
             if not match:
                 return None
             
             book_id = match.group(1)
-            
-            # Get book details
             return self.get_book(book_id)
             
         except Exception as e:
@@ -249,23 +261,23 @@ class StoryGraphClient:
             StoryGraphBook if found, None otherwise
         """
         try:
+            driver = self._get_driver()
+            self._add_cookie()
+            
             # Build search query
             query = title
             if author:
                 query = f"{title} {author}"
             
-            search_url = f"{STORYGRAPH_BASE_URL}/books"
-            params = {"q": query}
+            search_url = f"{STORYGRAPH_BASE_URL}/browse?search_term={query.replace(' ', '%20')}"
+            driver.get(search_url)
+            time.sleep(2)
             
-            response = self.session.get(search_url, params=params)
-            
-            if response.status_code != 200:
-                return None
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
+            # Parse results
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
             
             # Find book results
-            book_links = soup.find_all('a', href=re.compile(r'/books/\d+'))
+            book_links = soup.find_all('a', href=re.compile(r'/books/[a-f0-9-]+'))
             
             if not book_links:
                 return None
@@ -273,7 +285,7 @@ class StoryGraphClient:
             # Get first book
             book_link = book_links[0]
             href = book_link.get('href', '')
-            match = re.search(r'/books/(\d+)', href)
+            match = re.search(r'/books/([a-f0-9-]+)', href)
             
             if not match:
                 return None
@@ -301,12 +313,13 @@ class StoryGraphClient:
             StoryGraphBook if found, None otherwise
         """
         try:
-            response = self.session.get(f"{STORYGRAPH_BASE_URL}/books/{book_id}")
+            driver = self._get_driver()
+            self._add_cookie()
             
-            if response.status_code != 200:
-                return None
+            driver.get(f"{STORYGRAPH_BASE_URL}/books/{book_id}")
+            time.sleep(2)
             
-            soup = BeautifulSoup(response.text, 'html.parser')
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
             
             # Extract title
             title_elem = soup.find('h1') or soup.find('h2', class_='book-title')
@@ -320,7 +333,7 @@ class StoryGraphClient:
             isbn = None
             isbn_elem = soup.find(string=re.compile(r'ISBN'))
             if isbn_elem:
-                isbn_match = re.search(r'(\d{10}|\d{13})', isbn_elem)
+                isbn_match = re.search(r'(\d{10}|\d{13})', str(isbn_elem))
                 if isbn_match:
                     isbn = isbn_match.group(1)
             
@@ -346,24 +359,32 @@ class StoryGraphClient:
             List of StoryGraphBook objects
         """
         try:
-            response = self.session.get(f"{STORYGRAPH_BASE_URL}/currently-reading")
+            driver = self._get_driver()
+            self._add_cookie()
             
-            if response.status_code != 200:
-                return []
+            if self.username:
+                url = f"{STORYGRAPH_BASE_URL}/currently-reading/{self.username}"
+            else:
+                url = f"{STORYGRAPH_BASE_URL}/currently-reading"
             
-            soup = BeautifulSoup(response.text, 'html.parser')
+            driver.get(url)
+            time.sleep(2)
+            self._scroll_page()
+            
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
             books = []
             
-            # Find book entries
-            book_entries = soup.find_all('div', class_=re.compile(r'book'))
+            # Find book entries - StoryGraph uses various class names
+            # Look for book cards or list items
+            book_entries = soup.find_all(['div', 'li'], class_=re.compile(r'book|card|item'))
             
             for entry in book_entries:
-                book_link = entry.find('a', href=re.compile(r'/books/\d+'))
+                book_link = entry.find('a', href=re.compile(r'/books/[a-f0-9-]+'))
                 if not book_link:
                     continue
                 
                 href = book_link.get('href', '')
-                match = re.search(r'/books/(\d+)', href)
+                match = re.search(r'/books/([a-f0-9-]+)', href)
                 
                 if not match:
                     continue
@@ -372,10 +393,10 @@ class StoryGraphClient:
                 title = book_link.get_text(strip=True)
                 
                 # Try to find progress
-                progress_elem = entry.find(string=re.compile(r'\d+%\s*complete'))
                 progress = None
+                progress_elem = entry.find(string=re.compile(r'\d+%\s*(complete|read)?', re.IGNORECASE))
                 if progress_elem:
-                    progress_match = re.search(r'(\d+)%', progress_elem)
+                    progress_match = re.search(r'(\d+)%', str(progress_elem))
                     if progress_match:
                         progress = int(progress_match.group(1))
                 
@@ -389,6 +410,7 @@ class StoryGraphClient:
                     progress=progress,
                 ))
             
+            logger.info("Retrieved currently reading books", count=len(books))
             return books
             
         except Exception as e:
@@ -446,91 +468,61 @@ class StoryGraphClient:
             True if successful, False otherwise
         """
         try:
-            # Get book page to find form
-            response = self.session.get(f"{STORYGRAPH_BASE_URL}/books/{book_id}")
+            driver = self._get_driver()
+            self._add_cookie()
             
-            if response.status_code != 200:
-                logger.error("Failed to get book page for progress update", book_id=book_id)
-                return False
+            # Navigate to book page
+            driver.get(f"{STORYGRAPH_BASE_URL}/books/{book_id}")
+            time.sleep(2)
             
-            self._update_csrf_from_response(response)
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Find the progress update form
-            # StoryGraph uses various forms for updating progress
+            # Look for progress update button/form
+            # StoryGraph UI has various ways to update progress
             # This is a simplified implementation
             
-            # Look for "Add to currently reading" or progress form
-            form = soup.find('form', {'action': re.compile(r'progress|reading|status')})
+            # Try to find and click "Update Progress" or similar button
+            try:
+                # Look for progress input or button
+                progress_input = driver.find_element(By.CSS_SELECTOR, "input[type='number'][name*='progress'], input[type='range']")
+                if progress_input:
+                    progress_input.clear()
+                    progress_input.send_keys(str(progress_percent))
+                    
+                    # Find and click save/update button
+                    save_button = driver.find_element(By.CSS_SELECTOR, "button[type='submit'], button:contains('Save'), button:contains('Update')")
+                    if save_button:
+                        save_button.click()
+                        time.sleep(1)
+                        logger.info("Updated progress via form", book_id=book_id, progress=progress_percent)
+                        return True
+            except Exception:
+                pass
             
-            if not form:
-                # Try to add to currently reading first
-                return self._add_to_currently_reading(book_id, progress_percent)
+            # Alternative: Try to find "Add to currently reading" or status buttons
+            try:
+                # Look for status buttons
+                status_buttons = driver.find_elements(By.CSS_SELECTOR, "button[data-status], a[data-status]")
+                for button in status_buttons:
+                    button_text = button.text.lower()
+                    if "currently reading" in button_text or "reading" in button_text:
+                        button.click()
+                        time.sleep(1)
+                        logger.info("Added to currently reading", book_id=book_id)
+                        return True
+            except Exception:
+                pass
             
-            # Extract form action and inputs
-            action = form.get('action', '')
-            if not action.startswith('http'):
-                action = urljoin(STORYGRAPH_BASE_URL, action)
-            
-            form_data = {}
-            for input_elem in form.find_all('input'):
-                name = input_elem.get('name')
-                value = input_elem.get('value', '')
-                if name:
-                    form_data[name] = value
-            
-            # Update progress
-            form_data['progress'] = progress_percent
-            if status:
-                form_data['status'] = status
-            
-            # Submit form
-            submit_response = self.session.post(action, data=form_data)
-            
-            return submit_response.status_code in [200, 302]
+            # If we reach here, the UI structure may have changed
+            logger.warning(
+                "Could not find progress update UI elements - StoryGraph UI may have changed",
+                book_id=book_id
+            )
+            return False
             
         except Exception as e:
             logger.error(
                 "Failed to update progress",
                 book_id=book_id,
                 progress=progress_percent,
-                error=str(e)
-            )
-            return False
-    
-    def _add_to_currently_reading(self, book_id: str, progress: int = 0) -> bool:
-        """
-        Add a book to currently reading list.
-        
-        Args:
-            book_id: StoryGraph book ID
-            progress: Initial progress
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            # This is a simplified implementation
-            # The actual StoryGraph UI may require different endpoints
-            
-            response = self.session.post(
-                f"{STORYGRAPH_BASE_URL}/books/{book_id}/read_statuses",
-                json={
-                    "status": "currently_reading",
-                    "progress": progress,
-                },
-                headers={
-                    "Content-Type": "application/json",
-                    "X-CSRF-Token": self._csrf_token or "",
-                }
-            )
-            
-            return response.status_code in [200, 201, 302]
-            
-        except Exception as e:
-            logger.error(
-                "Failed to add to currently reading",
-                book_id=book_id,
                 error=str(e)
             )
             return False
@@ -545,8 +537,34 @@ class StoryGraphClient:
         Returns:
             True if successful, False otherwise
         """
-        return self.update_progress(book_id, 100, "finished")
+        try:
+            driver = self._get_driver()
+            self._add_cookie()
+            
+            # Navigate to book page
+            driver.get(f"{STORYGRAPH_BASE_URL}/books/{book_id}")
+            time.sleep(2)
+            
+            # Look for "Mark as finished" or "I've finished" button
+            try:
+                finish_buttons = driver.find_elements(By.CSS_SELECTOR, "button, a")
+                for button in finish_buttons:
+                    button_text = button.text.lower()
+                    if "finished" in button_text or "done" in button_text or "complete" in button_text:
+                        button.click()
+                        time.sleep(1)
+                        logger.info("Marked book as finished", book_id=book_id)
+                        return True
+            except Exception:
+                pass
+            
+            # Fallback: update progress to 100%
+            return self.update_progress(book_id, 100, "finished")
+            
+        except Exception as e:
+            logger.error("Failed to mark as finished", book_id=book_id, error=str(e))
+            return False
     
     def close(self) -> None:
-        """Close the session."""
-        self.session.close()
+        """Close the session and WebDriver."""
+        self._close_driver()

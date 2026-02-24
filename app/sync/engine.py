@@ -77,12 +77,12 @@ class SyncEngine:
                 logger.info("Initialized Hardcover client")
             
             # Initialize StoryGraph client
-            if self.config.enable_storygraph and self.config.storygraph_email:
+            if self.config.enable_storygraph and self.config.storygraph_cookie:
                 self.sg_client = StoryGraphClient(
-                    self.config.storygraph_email,
-                    self.config.storygraph_password
+                    self.config.storygraph_cookie,
+                    self.config.storygraph_username
                 )
-                # Login to StoryGraph
+                # Login to StoryGraph (validates cookie)
                 if not self.sg_client.login():
                     logger.error("Failed to login to StoryGraph")
                     self.sg_client = None

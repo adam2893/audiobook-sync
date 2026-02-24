@@ -16,8 +16,8 @@ class Config(Base):
     id = Column(Integer, primary_key=True)
     abs_url = Column(String(500), nullable=True)
     abs_token = Column(String(500), nullable=True)
-    sg_email = Column(String(255), nullable=True)
-    sg_password = Column(String(255), nullable=True)  # Should be encrypted in production
+    sg_cookie = Column(String(2000), nullable=True)  # remember_user_token cookie
+    sg_username = Column(String(255), nullable=True)  # StoryGraph username
     hc_api_key = Column(String(500), nullable=True)
     sync_interval_minutes = Column(Integer, default=60)
     min_listen_time_seconds = Column(Integer, default=600)  # 10 minutes

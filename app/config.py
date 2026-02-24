@@ -19,9 +19,9 @@ class SyncConfig(BaseModel):
     abs_url: Optional[str] = Field(default=None, description="Audiobookshelf server URL")
     abs_token: Optional[str] = Field(default=None, description="Audiobookshelf API token")
     
-    # StoryGraph settings
-    storygraph_email: Optional[str] = Field(default=None, description="StoryGraph email")
-    storygraph_password: Optional[str] = Field(default=None, description="StoryGraph password")
+    # StoryGraph settings (cookie-based authentication)
+    storygraph_cookie: Optional[str] = Field(default=None, description="StoryGraph remember_user_token cookie")
+    storygraph_username: Optional[str] = Field(default=None, description="StoryGraph username (for user-specific pages)")
     
     # Hardcover settings
     hardcover_api_key: Optional[str] = Field(default=None, description="Hardcover API key")
@@ -51,8 +51,8 @@ def get_config_from_env() -> SyncConfig:
     return SyncConfig(
         abs_url=os.getenv("ABS_URL"),
         abs_token=os.getenv("ABS_TOKEN"),
-        storygraph_email=os.getenv("STORYGRAPH_EMAIL"),
-        storygraph_password=os.getenv("STORYGRAPH_PASSWORD"),
+        storygraph_cookie=os.getenv("STORYGRAPH_COOKIE"),
+        storygraph_username=os.getenv("STORYGRAPH_USERNAME"),
         hardcover_api_key=os.getenv("HARDCOVER_API_KEY"),
         sync_interval_minutes=int(os.getenv("SYNC_INTERVAL_MINUTES", "60")),
         min_listen_minutes=int(os.getenv("MIN_LISTEN_MINUTES", "10")),
@@ -93,8 +93,8 @@ class ConfigManager:
             return SyncConfig(
                 abs_url=db_config.abs_url or self._env_config.abs_url,
                 abs_token=db_config.abs_token or self._env_config.abs_token,
-                storygraph_email=db_config.sg_email or self._env_config.storygraph_email,
-                storygraph_password=db_config.sg_password or self._env_config.storygraph_password,
+                storygraph_cookie=db_config.sg_cookie or self._env_config.storygraph_cookie,
+                storygraph_username=db_config.sg_username or self._env_config.storygraph_username,
                 hardcover_api_key=db_config.hc_api_key or self._env_config.hardcover_api_key,
                 sync_interval_minutes=db_config.sync_interval_minutes or self._env_config.sync_interval_minutes,
                 min_listen_minutes=(db_config.min_listen_time_seconds // 60) if db_config.min_listen_time_seconds else self._env_config.min_listen_minutes,
@@ -121,8 +121,8 @@ class ConfigManager:
         
         db_config.abs_url = config.abs_url
         db_config.abs_token = config.abs_token
-        db_config.sg_email = config.storygraph_email
-        db_config.sg_password = config.storygraph_password
+        db_config.sg_cookie = config.storygraph_cookie
+        db_config.sg_username = config.storygraph_username
         db_config.hc_api_key = config.hardcover_api_key
         db_config.sync_interval_minutes = config.sync_interval_minutes
         db_config.min_listen_time_seconds = config.min_listen_minutes * 60
@@ -138,7 +138,7 @@ class ConfigManager:
             return False
         
         # And at least one target service
-        has_storygraph = config.storygraph_email and config.storygraph_password
+        has_storygraph = config.storygraph_cookie
         has_hardcover = config.hardcover_api_key
         
         return has_storygraph or has_hardcover

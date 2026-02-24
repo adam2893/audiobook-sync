@@ -22,8 +22,8 @@ def index():
             config = SyncConfig(
                 abs_url=request.form.get('abs_url') or None,
                 abs_token=request.form.get('abs_token') or None,
-                storygraph_email=request.form.get('storygraph_email') or None,
-                storygraph_password=request.form.get('storygraph_password') or None,
+                storygraph_cookie=request.form.get('storygraph_cookie') or None,
+                storygraph_username=request.form.get('storygraph_username') or None,
                 hardcover_api_key=request.form.get('hardcover_api_key') or None,
                 sync_interval_minutes=int(request.form.get('sync_interval_minutes', 60)),
                 min_listen_minutes=int(request.form.get('min_listen_minutes', 10)),
@@ -41,8 +41,8 @@ def index():
                 
                 db_config.abs_url = config.abs_url
                 db_config.abs_token = config.abs_token
-                db_config.sg_email = config.storygraph_email
-                db_config.sg_password = config.storygraph_password
+                db_config.sg_cookie = config.storygraph_cookie
+                db_config.sg_username = config.storygraph_username
                 db_config.hc_api_key = config.hardcover_api_key
                 db_config.sync_interval_minutes = config.sync_interval_minutes
                 db_config.min_listen_time_seconds = config.min_listen_minutes * 60
@@ -105,14 +105,14 @@ def test_connection():
     elif service == 'storygraph':
         from app.api.storygraph import StoryGraphClient
         
-        email = request.form.get('email')
-        password = request.form.get('password')
+        cookie = request.form.get('cookie')
+        username = request.form.get('username')
         
-        if not email or not password:
-            return {'success': False, 'error': 'Email and password are required'}
+        if not cookie:
+            return {'success': False, 'error': 'Cookie is required'}
         
         try:
-            client = StoryGraphClient(email, password)
+            client = StoryGraphClient(cookie, username)
             success = client.login()
             client.close()
             

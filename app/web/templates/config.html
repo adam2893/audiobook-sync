@@ -51,33 +51,49 @@
     <div class="card mb-4">
         <div class="card-header">
             <i class="bi bi-graph-up"></i> StoryGraph Settings
+            <span class="badge bg-info text-dark ms-2">Cookie Auth</span>
         </div>
         <div class="card-body">
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> <strong>How to get your StoryGraph cookie:</strong>
+                <ol class="mb-0 mt-2">
+                    <li>Log in to <a href="https://app.thestorygraph.com" target="_blank">StoryGraph</a> in your browser</li>
+                    <li>Open Developer Tools (F12 or right-click → Inspect)</li>
+                    <li>Go to Application → Cookies → app.thestorygraph.com</li>
+                    <li>Find <code>remember_user_token</code> and copy its value</li>
+                </ol>
+            </div>
             <div class="row">
                 <div class="col-md-6 mb-3">
-                    <label for="storygraph_email" class="form-label">Email</label>
-                    <input type="email" 
-                           class="form-control" 
-                           id="storygraph_email" 
-                           name="storygraph_email" 
-                           value="{{ config.storygraph_email or '' }}"
-                           placeholder="your@email.com">
-                </div>
-                <div class="col-md-6 mb-3">
-                    <label for="storygraph_password" class="form-label">Password</label>
+                    <label for="storygraph_cookie" class="form-label">remember_user_token Cookie</label>
                     <div class="input-group">
                         <input type="password" 
                                class="form-control" 
-                               id="storygraph_password" 
-                               name="storygraph_password" 
-                               value="{{ config.storygraph_password or '' }}"
-                               placeholder="Your password">
+                               id="storygraph_cookie" 
+                               name="storygraph_cookie" 
+                               value="{{ config.storygraph_cookie or '' }}"
+                               placeholder="Paste your cookie value here">
                         <button class="btn btn-outline-secondary" 
                                 type="button" 
                                 onclick="testConnection('storygraph')">
                             Test
                         </button>
                     </div>
+                    <small class="text-muted">
+                        The cookie value from your browser's developer tools
+                    </small>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="storygraph_username" class="form-label">Username (Optional)</label>
+                    <input type="text" 
+                           class="form-control" 
+                           id="storygraph_username" 
+                           name="storygraph_username" 
+                           value="{{ config.storygraph_username or '' }}"
+                           placeholder="your_username">
+                    <small class="text-muted">
+                        Your StoryGraph username for user-specific pages
+                    </small>
                 </div>
             </div>
             <div class="form-check">
@@ -190,8 +206,8 @@ async function testConnection(service) {
     } else if (service === 'storygraph') {
         data = {
             service: 'storygraph',
-            email: document.getElementById('storygraph_email').value,
-            password: document.getElementById('storygraph_password').value
+            cookie: document.getElementById('storygraph_cookie').value,
+            username: document.getElementById('storygraph_username').value
         };
     } else if (service === 'hardcover') {
         data = {

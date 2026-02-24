@@ -3,7 +3,7 @@ version: '3.8'
 services:
   audiobook-sync:
     build: .
-    image: audiobook-sync:latest
+    image: adam28693/audiobook-sync:latest
     container_name: audiobook-sync
     ports:
       - "8765:8765"
@@ -14,9 +14,9 @@ services:
       - ABS_URL=${ABS_URL:-}
       - ABS_TOKEN=${ABS_TOKEN:-}
       
-      # StoryGraph Configuration
-      - STORYGRAPH_EMAIL=${STORYGRAPH_EMAIL:-}
-      - STORYGRAPH_PASSWORD=${STORYGRAPH_PASSWORD:-}
+      # StoryGraph Configuration (Cookie-based auth)
+      - STORYGRAPH_COOKIE=${STORYGRAPH_COOKIE:-}
+      - STORYGRAPH_USERNAME=${STORYGRAPH_USERNAME:-}
       
       # Hardcover Configuration
       - HARDCOVER_API_KEY=${HARDCOVER_API_KEY:-}
