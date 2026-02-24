@@ -14,7 +14,6 @@ config_bp = Blueprint('config', __name__)
 @config_bp.route('/config', methods=['GET', 'POST'])
 def index():
     """Configuration page."""
-    config_manager = ConfigManager()
     
     if request.method == 'POST':
         # Save configuration
@@ -55,7 +54,10 @@ def index():
         return redirect(url_for('config.index'))
     
     # GET request - show configuration form
-    current_config = config_manager.get_config()
+    # Load config from database
+    with get_db_session() as session:
+        config_manager = ConfigManager(db_session=session)
+        current_config = config_manager.get_config()
     
     return render_template(
         'config.html',
