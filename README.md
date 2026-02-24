@@ -25,7 +25,7 @@ services:
     image: audiobook-sync:latest
     container_name: audiobook-sync
     ports:
-      - "5000:5000"
+      - "8765:8765"
     volumes:
       - ./data:/data
     environment:
@@ -43,14 +43,14 @@ services:
 docker-compose up -d
 ```
 
-3. Open your browser to `http://localhost:5000` to access the web UI.
+3. Open your browser to `http://localhost:8765` to access the web UI.
 
 ### Using Docker
 
 ```bash
 docker build -t audiobook-sync .
 docker run -d \
-  -p 5000:5000 \
+  -p 8765:8765 \
   -v $(pwd)/data:/data \
   -e ABS_URL=http://your-audiobookshelf:13378 \
   -e ABS_TOKEN=your-api-token \
@@ -80,11 +80,11 @@ docker run -d \
 | `SECRET_KEY` | Flask secret key for sessions | (auto-generated) |
 | `LOG_LEVEL` | Logging level | INFO |
 | `TZ` | Timezone | UTC |
-| `PORT` | Web server port | 5000 |
+| `PORT` | Web server port | 8765 |
 
 ### Web UI Configuration
 
-You can also configure the service through the web UI at `http://localhost:5000/config`. The web UI allows you to:
+You can also configure the service through the web UI at `http://localhost:8765/config`. The web UI allows you to:
 
 - Configure Audiobookshelf connection
 - Configure StoryGraph credentials
@@ -143,7 +143,7 @@ The service provides a REST API for programmatic access:
 2. Add a new container with the following settings:
    - **Repository**: `audiobook-sync:latest`
    - **Network**: bridge
-   - **Port**: 5000
+   - **Port**: 8765
    - **Volume**: `/data` → Your preferred data location
 3. Add environment variables for your configuration
 4. Start the container

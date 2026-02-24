@@ -156,8 +156,8 @@ def main():
     atexit.register(shutdown_scheduler)
     atexit.register(close_db)
     
-    # Get port from environment
-    port = int(os.getenv("PORT", "5000"))
+    # Get port from environment (default: 8765 to avoid conflicts with AirPlay on macOS)
+    port = int(os.getenv("PORT", "8765"))
     
     # Run Flask app with waitress
     from waitress import serve
