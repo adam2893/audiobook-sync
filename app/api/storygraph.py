@@ -98,23 +98,63 @@ class StoryGraphClient:
             
             # Parse form data
             soup = BeautifulSoup(login_page.text, 'html.parser')
-            form = soup.find('form', {'action': re.compile(r'/sign_in')})
+            
+            # Try multiple form detection strategies
+            form = None
+            
+            # Strategy 1: Look for form with action containing sign_in
+            form = soup.find('form', {'action': re.compile(r'sign_in')})
+            
+            # Strategy 2: Look for form with id or class containing sign_in or login
+            if not form:
+                form = soup.find('form', id=re.compile(r'(sign_in|login|session)', re.I))
+            
+            # Strategy 3: Look for any form with email and password fields
+            if not form:
+                for f in soup.find_all('form'):
+                    email_field = f.find('input', {'name': re.compile(r'email', re.I)})
+                    password_field = f.find('input', {'name': re.compile(r'password', re.I)})
+                    if email_field and password_field:
+                        form = f
+                        break
+            
+            # Strategy 4: Look for form inside a div with session/sign_in class
+            if not form:
+                form_container = soup.find('div', class_=re.compile(r'(session|sign_in|login)', re.I))
+                if form_container:
+                    form = form_container.find('form')
             
             if not form:
                 logger.error("Could not find login form")
                 return False
             
-            # Prepare login data
-            login_data = {
-                "user[email]": self.email,
-                "user[password]": self.password,
-                "authenticity_token": self._csrf_token,
-                "commit": "Log in",
-            }
+            # Prepare login data - extract all hidden fields from form
+            login_data = {}
+            for input_elem in form.find_all('input'):
+                name = input_elem.get('name')
+                value = input_elem.get('value', '')
+                if name:
+                    login_data[name] = value
+            
+            # Override with credentials
+            login_data["user[email]"] = self.email
+            login_data["user[password]"] = self.password
+            
+            # Get form action
+            action = form.get('action')
+            if action:
+                if action.startswith('/'):
+                    submit_url = f"{STORYGRAPH_BASE_URL}{action}"
+                elif action.startswith('http'):
+                    submit_url = action
+                else:
+                    submit_url = f"{STORYGRAPH_BASE_URL}/sign_in"
+            else:
+                submit_url = f"{STORYGRAPH_BASE_URL}/sign_in"
             
             # Submit login form
             response = self.session.post(
-                f"{STORYGRAPH_BASE_URL}/sign_in",
+                submit_url,
                 data=login_data,
                 allow_redirects=True
             )
