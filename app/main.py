@@ -33,7 +33,9 @@ def create_app() -> Flask:
     Returns:
         Configured Flask app
     """
-    app = Flask(__name__)
+    # Specify template folder path relative to this file
+    template_dir = os.path.join(os.path.dirname(__file__), 'web', 'templates')
+    app = Flask(__name__, template_folder=template_dir)
     
     # Load configuration
     config_manager = ConfigManager()
