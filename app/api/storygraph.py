@@ -93,21 +93,33 @@ class StoryGraphClient:
         """
         try:
             # Get login page to extract CSRF token
-            login_page = self.session.get(f"{STORYGRAPH_BASE_URL}/sign_in")
+            login_url = f"{STORYGRAPH_BASE_URL}/sign_in"
+            login_page = self.session.get(login_url)
+            
+            logger.debug("Login page fetched", status_code=login_page.status_code, url=login_page.url)
+            
             self._update_csrf_from_response(login_page)
             
             # Parse form data
             soup = BeautifulSoup(login_page.text, 'html.parser')
+            
+            # Log all forms found for debugging
+            all_forms = soup.find_all('form')
+            logger.debug("Forms found on page", count=len(all_forms))
+            for i, f in enumerate(all_forms):
+                logger.debug(f"Form {i}", action=f.get('action'), id=f.get('id'), cls=f.get('class'))
             
             # Try multiple form detection strategies
             form = None
             
             # Strategy 1: Look for form with action containing sign_in
             form = soup.find('form', {'action': re.compile(r'sign_in')})
+            logger.debug("Strategy 1 (sign_in action)", found=form is not None)
             
             # Strategy 2: Look for form with id or class containing sign_in or login
             if not form:
-                form = soup.find('form', id=re.compile(r'(sign_in|login|session)', re.I))
+                form = soup.find('form', id=re.compile(r'(sign_in|login|session|new_user)', re.I))
+                logger.debug("Strategy 2 (form id)", found=form is not None)
             
             # Strategy 3: Look for any form with email and password fields
             if not form:
@@ -116,6 +128,7 @@ class StoryGraphClient:
                     password_field = f.find('input', {'name': re.compile(r'password', re.I)})
                     if email_field and password_field:
                         form = f
+                        logger.debug("Strategy 3 (email/password fields)", found=True)
                         break
             
             # Strategy 4: Look for form inside a div with session/sign_in class
@@ -123,9 +136,20 @@ class StoryGraphClient:
                 form_container = soup.find('div', class_=re.compile(r'(session|sign_in|login)', re.I))
                 if form_container:
                     form = form_container.find('form')
+                    logger.debug("Strategy 4 (div container)", found=form is not None)
+            
+            # Strategy 5: Just use the first form if only one exists
+            if not form and len(all_forms) == 1:
+                form = all_forms[0]
+                logger.debug("Strategy 5 (single form)", found=True)
+            
+            # Strategy 6: Look for new_user_session form
+            if not form:
+                form = soup.find('form', {'id': 'new_user'})
+                logger.debug("Strategy 6 (new_user form)", found=form is not None)
             
             if not form:
-                logger.error("Could not find login form")
+                logger.error("Could not find login form", forms_count=len(all_forms))
                 return False
             
             # Prepare login data - extract all hidden fields from form
@@ -152,12 +176,16 @@ class StoryGraphClient:
             else:
                 submit_url = f"{STORYGRAPH_BASE_URL}/sign_in"
             
+            logger.debug("Submitting login", url=submit_url, data_keys=list(login_data.keys()))
+            
             # Submit login form
             response = self.session.post(
                 submit_url,
                 data=login_data,
                 allow_redirects=True
             )
+            
+            logger.debug("Login response", status_code=response.status_code, url=response.url)
             
             # Check if login successful
             if response.status_code == 200 and "sign_in" not in response.url:
