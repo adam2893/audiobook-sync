@@ -66,8 +66,9 @@ class AudiobookshelfClient(BaseClient):
             True if connection successful, False otherwise
         """
         try:
-            response = self.get("/api/health")
-            return response.get("data") == "OK"
+            # Use /api/status endpoint which is available in Audiobookshelf
+            response = self.get("/api/status")
+            return response.get("isInit") is not None
         except APIError as e:
             logger.error("Failed to connect to Audiobookshelf", error=str(e))
             return False
