@@ -47,7 +47,7 @@
                         <td class="log-entry log-{{ log.level.lower() }}">
                             {{ log.message }}
                             {% if log.details %}
-                            <small class="text-muted d-block">{{ log.details }}</small>
+                            <small class="text-muted d-block">{{ log.details | tojson }}</small>
                             {% endif %}
                         </td>
                     </tr>
