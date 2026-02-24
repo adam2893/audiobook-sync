@@ -117,6 +117,21 @@ class AudiobookshelfClient(BaseClient):
             logger.debug("Items in progress response", response_keys=list(response.keys()) if isinstance(response, dict) else type(response))
             items = response.get("libraryItems", [])
             logger.info("Retrieved items in progress from Audiobookshelf", count=len(items))
+            
+            # Log the structure of the first item for debugging
+            if items:
+                first_item = items[0]
+                logger.info(
+                    "First item structure",
+                    item_id=first_item.get("id"),
+                    item_keys=list(first_item.keys()),
+                    has_progress="progress" in first_item,
+                    has_media="media" in first_item,
+                )
+                # Log progress structure if present
+                if "progress" in first_item:
+                    logger.info("Progress data", progress_keys=list(first_item["progress"].keys()), progress_data=first_item["progress"])
+            
             return items
         except Exception as e:
             logger.error("Failed to get items in progress from Audiobookshelf", error=str(e))
