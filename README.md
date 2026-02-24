@@ -106,6 +106,7 @@ You can also configure the service through the web UI at `http://localhost:8765/
 1. Go to [hardcover.app/account](https://hardcover.app/account)
 2. Scroll down to API Keys
 3. Generate a new API key
+4. Copy only the token part (after "Bearer ") - e.g., if it shows "Bearer abc123", copy only "abc123"
 
 ### StoryGraph
 
