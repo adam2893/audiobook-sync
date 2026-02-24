@@ -88,15 +88,20 @@ class StoryGraphClient:
             chromium_path = os.environ.get('CHROMIUM_BIN', '/usr/bin/chromium')
             if os.path.exists(chromium_path):
                 options.binary_location = chromium_path
+                logger.debug("Using Chromium binary", path=chromium_path)
             
-            try:
-                # Try to use ChromeDriverManager first (for local development)
+            # Check if we're in a Docker environment (has chromium-driver)
+            chromedriver_path = '/usr/bin/chromedriver'
+            if os.path.exists(chromedriver_path):
+                # Use system chromedriver (for Docker)
+                logger.debug("Using system chromedriver", path=chromedriver_path)
+                service = Service(chromedriver_path)
+                self._driver = webdriver.Chrome(service=service, options=options)
+            else:
+                # Use ChromeDriverManager for local development
+                logger.debug("Using ChromeDriverManager for local development")
                 service = Service(ChromeDriverManager().install())
                 self._driver = webdriver.Chrome(service=service, options=options)
-            except Exception as e:
-                logger.debug("ChromeDriverManager failed, trying system chromedriver", error=str(e))
-                # Fall back to system chromedriver (for Docker)
-                self._driver = webdriver.Chrome(options=options)
             
             # Set page load timeout
             self._driver.set_page_load_timeout(30)
