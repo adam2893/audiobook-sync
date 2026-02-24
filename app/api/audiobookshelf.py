@@ -112,8 +112,15 @@ class AudiobookshelfClient(BaseClient):
         Returns:
             List of items with progress information
         """
-        response = self.get("/api/me/items-in-progress")
-        return response.get("libraryItems", [])
+        try:
+            response = self.get("/api/me/items-in-progress")
+            logger.debug("Items in progress response", response_keys=list(response.keys()) if isinstance(response, dict) else type(response))
+            items = response.get("libraryItems", [])
+            logger.info("Retrieved items in progress from Audiobookshelf", count=len(items))
+            return items
+        except Exception as e:
+            logger.error("Failed to get items in progress from Audiobookshelf", error=str(e))
+            return []
     
     def get_item(self, item_id: str) -> Dict[str, Any]:
         """
@@ -159,7 +166,17 @@ class AudiobookshelfClient(BaseClient):
             metadata = media.get("metadata", {})
             progress = item.get("progress", {})
             
+            # Log the item structure for debugging
+            logger.debug(
+                "Parsing item",
+                item_id=item.get("id"),
+                has_media=bool(media),
+                has_progress=bool(progress),
+                item_keys=list(item.keys())
+            )
+            
             if not progress:
+                logger.debug("No progress data for item", item_id=item.get("id"))
                 return None
             
             # Get duration from media
@@ -184,7 +201,7 @@ class AudiobookshelfClient(BaseClient):
                     progress["lastUpdate"] / 1000
                 )
             
-            return AudiobookProgress(
+            result = AudiobookProgress(
                 book_id=item.get("id", ""),
                 title=metadata.get("title", "Unknown"),
                 author=metadata.get("authorName"),
@@ -196,6 +213,16 @@ class AudiobookshelfClient(BaseClient):
                 is_finished=progress.get("isFinished", False),
                 last_update=last_update,
             )
+            
+            logger.debug(
+                "Parsed audiobook progress",
+                title=result.title,
+                current_time_seconds=current_time,
+                duration_seconds=duration,
+                progress_percent=progress_percent
+            )
+            
+            return result
             
         except Exception as e:
             logger.error(
@@ -225,14 +252,24 @@ class AudiobookshelfClient(BaseClient):
             progress = self.parse_progress(item)
             
             if progress is None:
+                # Log why progress is None
+                progress_data = item.get("progress", {})
+                logger.debug(
+                    "Skipping item - no progress data",
+                    item_id=item.get("id"),
+                    has_progress=bool(progress_data),
+                    progress_keys=list(progress_data.keys()) if progress_data else [],
+                )
                 continue
             
             # Filter by minimum listen time
             if progress.current_time_seconds < min_listen_seconds:
-                logger.debug(
+                logger.info(
                     "Skipping book - below minimum listen time",
                     title=progress.title,
-                    listened_minutes=progress.listened_minutes
+                    listened_minutes=round(progress.listened_minutes, 2),
+                    current_time_seconds=progress.current_time_seconds,
+                    min_listen_seconds=min_listen_seconds
                 )
                 continue
             
