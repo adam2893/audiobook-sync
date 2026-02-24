@@ -42,7 +42,7 @@ def init_db():
     )
     
     SessionLocal = scoped_session(
-        sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
     )
     
     # Create all tables
