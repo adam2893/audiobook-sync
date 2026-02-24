@@ -92,112 +92,71 @@ class StoryGraphClient:
             True if login successful, False otherwise
         """
         try:
-            # Get login page to extract CSRF token
+            # StoryGraph uses a React/Vue SPA, so the login form is rendered via JavaScript
+            # We need to use the API endpoint directly
+            
+            # First, get the login page to get any cookies/CSRF tokens
             login_url = f"{STORYGRAPH_BASE_URL}/sign_in"
             login_page = self.session.get(login_url)
             
             logger.debug("Login page fetched", status_code=login_page.status_code, url=login_page.url)
             
+            # Extract CSRF token from the page (it's usually in a meta tag or embedded in JS)
             self._update_csrf_from_response(login_page)
             
-            # Parse form data
-            soup = BeautifulSoup(login_page.text, 'html.parser')
+            # Try the API login endpoint directly
+            # StoryGraph uses Rails backend with Devise for authentication
+            login_data = {
+                "user[email]": self.email,
+                "user[password]": self.password,
+                "authenticity_token": self._csrf_token,
+            }
             
-            # Log all forms found for debugging
-            all_forms = soup.find_all('form')
-            logger.debug("Forms found on page", count=len(all_forms))
-            for i, f in enumerate(all_forms):
-                logger.debug(f"Form {i}", action=f.get('action'), id=f.get('id'), cls=f.get('class'))
-            
-            # Try multiple form detection strategies
-            form = None
-            
-            # Strategy 1: Look for form with action containing sign_in
-            form = soup.find('form', {'action': re.compile(r'sign_in')})
-            logger.debug("Strategy 1 (sign_in action)", found=form is not None)
-            
-            # Strategy 2: Look for form with id or class containing sign_in or login
-            if not form:
-                form = soup.find('form', id=re.compile(r'(sign_in|login|session|new_user)', re.I))
-                logger.debug("Strategy 2 (form id)", found=form is not None)
-            
-            # Strategy 3: Look for any form with email and password fields
-            if not form:
-                for f in soup.find_all('form'):
-                    email_field = f.find('input', {'name': re.compile(r'email', re.I)})
-                    password_field = f.find('input', {'name': re.compile(r'password', re.I)})
-                    if email_field and password_field:
-                        form = f
-                        logger.debug("Strategy 3 (email/password fields)", found=True)
-                        break
-            
-            # Strategy 4: Look for form inside a div with session/sign_in class
-            if not form:
-                form_container = soup.find('div', class_=re.compile(r'(session|sign_in|login)', re.I))
-                if form_container:
-                    form = form_container.find('form')
-                    logger.debug("Strategy 4 (div container)", found=form is not None)
-            
-            # Strategy 5: Just use the first form if only one exists
-            if not form and len(all_forms) == 1:
-                form = all_forms[0]
-                logger.debug("Strategy 5 (single form)", found=True)
-            
-            # Strategy 6: Look for new_user_session form
-            if not form:
-                form = soup.find('form', {'id': 'new_user'})
-                logger.debug("Strategy 6 (new_user form)", found=form is not None)
-            
-            if not form:
-                logger.error("Could not find login form", forms_count=len(all_forms))
-                return False
-            
-            # Prepare login data - extract all hidden fields from form
-            login_data = {}
-            for input_elem in form.find_all('input'):
-                name = input_elem.get('name')
-                value = input_elem.get('value', '')
-                if name:
-                    login_data[name] = value
-            
-            # Override with credentials
-            login_data["user[email]"] = self.email
-            login_data["user[password]"] = self.password
-            
-            # Get form action
-            action = form.get('action')
-            if action:
-                if action.startswith('/'):
-                    submit_url = f"{STORYGRAPH_BASE_URL}{action}"
-                elif action.startswith('http'):
-                    submit_url = action
-                else:
-                    submit_url = f"{STORYGRAPH_BASE_URL}/sign_in"
-            else:
-                submit_url = f"{STORYGRAPH_BASE_URL}/sign_in"
-            
-            logger.debug("Submitting login", url=submit_url, data_keys=list(login_data.keys()))
-            
-            # Submit login form
+            # Try the session endpoint
             response = self.session.post(
-                submit_url,
+                f"{STORYGRAPH_BASE_URL}/users/sign_in",
                 data=login_data,
-                allow_redirects=True
+                allow_redirects=True,
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                }
             )
             
             logger.debug("Login response", status_code=response.status_code, url=response.url)
             
-            # Check if login successful
+            # Check if login successful (redirected away from sign_in page)
             if response.status_code == 200 and "sign_in" not in response.url:
                 self._authenticated = True
                 self._update_csrf_from_response(response)
                 logger.info("Successfully logged into StoryGraph")
                 return True
             
+            # Try alternative JSON API endpoint
+            json_response = self.session.post(
+                f"{STORYGRAPH_BASE_URL}/api/v1/users/sign_in",
+                json={
+                    "user": {
+                        "email": self.email,
+                        "password": self.password,
+                    }
+                },
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                }
+            )
+            
+            if json_response.status_code == 200:
+                self._authenticated = True
+                logger.info("Successfully logged into StoryGraph via API")
+                return True
+            
             logger.error(
                 "StoryGraph login failed",
                 status_code=response.status_code,
-                url=response.url
+                url=response.url,
+                json_status=json_response.status_code
             )
             return False
             
